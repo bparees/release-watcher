@@ -91,21 +91,22 @@ func getStaleStreams(releases map[string][]string, threshold time.Duration) (map
 	return emptyStreams, staleStreams
 }
 
-// args:
-// release stream api url
-// oldest minor version to care about
-// channel/alias to notify in report
-
 // TODO
-// add arguments
+// add arguments:
+//   args:
+//     release stream api url
+//     oldest minor version to care about
+//     channel/alias to notify in report
 // Sort/format report with sections/headers and sort by release version?
 // What to do with the case: recent builds are newer than a week, but older than a day, so there
-// will be no recently accepted payload expected, but it also won't be reported as a stale build stream
+//   will be no recently accepted payload expected, but it also won't be reported as a stale build stream
+// Just ignore them?  (If there are no accepted payloads period, it will still be flagged)
+
 // What we do report:
-// accepted payload is older than a day when newer builds exist in the stream - we are failing to accept payloads regularly/may have regressed
-// no accepted builds in the stream when builds exist in the stream - we are completely failing to accept payloads, DIRE
-// no builds exist in the stream - either there have been no changes in the code(ok) or our build system is broken (not ok).  - ????
-// no build newer than a week exists in the stream - either there have been no changes in the code(ok) or our build system is broken (not ok).  - ????
+//   accepted payload is older than a day when newer builds exist in the stream - we are failing to accept payloads regularly/may have regressed
+//   no accepted builds in the stream when builds exist in the stream - we are completely failing to accept payloads, DIRE
+//   no builds exist in the stream - either there have been no changes in the code(ok) or our build system is broken (not ok).  - ????
+//   no build newer than a week exists in the stream - either there have been no changes in the code(ok) or our build system is broken (not ok).  - ????
 
 func main() {
 	acceptedReleases, err := getReleaseStream(acceptedReleaseUrl)
