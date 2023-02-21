@@ -92,8 +92,8 @@ func newReportCommand() *cobra.Command {
 	flagset := cmd.Flags()
 	flagset.StringVar(&o.releaseAPIUrl, "release-api-url", o.releaseAPIUrl, "The url of the release reporting api")
 	flagset.IntVar(&o.oldestMinor, "oldest-minor", 8, "The oldest minor release to analyze.  Release streams older than this will be ignored.  Specify only the minor value (e.g. \"13\")")
-	flagset.DurationVar(&o.acceptedStalenessLimit, "accepted-staleness-limit", 24, "How old an accepted payload can be before it is considered stale, in hours")
-	flagset.DurationVar(&o.builtStalenessLimit, "built-staleness-limit", 72, "How old an built payload can be before it is considered stale, in hours")
+	flagset.DurationVar(&o.acceptedStalenessLimit, "accepted-staleness-limit", 24*time.Hour, "How old an accepted payload can be before it is considered stale, in hours")
+	flagset.DurationVar(&o.builtStalenessLimit, "built-staleness-limit", 72*time.Hour, "How old an built payload can be before it is considered stale, in hours")
 
 	return cmd
 }
@@ -116,8 +116,8 @@ func newBotCommand() *cobra.Command {
 	flagset.StringVar(&o.slackAlias, "slack-alias", "", "Slack alias to tag in the generated report.  Leave empty to not tag anyone.")
 	flagset.StringVar(&o.releaseAPIUrl, "release-api-url", o.releaseAPIUrl, "The url of the release reporting api")
 	flagset.IntVar(&o.oldestMinor, "oldest-minor", 8, "The oldest minor release to analyze.  Release streams older than this will be ignored.  Specify only the minor value (e.g. \"13\")")
-	flagset.DurationVar(&o.acceptedStalenessLimit, "accepted-staleness-limit", 24, "How old an accepted payload can be before it is considered stale, in hours")
-	flagset.DurationVar(&o.builtStalenessLimit, "built-staleness-limit", 72, "How old an built payload can be before it is considered stale, in hours")
+	flagset.DurationVar(&o.acceptedStalenessLimit, "accepted-staleness-limit", 24*time.Hour, "How old an accepted payload can be before it is considered stale, in hours")
+	flagset.DurationVar(&o.builtStalenessLimit, "built-staleness-limit", 72*time.Hour, "How old an built payload can be before it is considered stale, in hours")
 
 	return cmd
 }
