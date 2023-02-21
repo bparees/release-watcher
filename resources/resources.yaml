@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: release-watcher
+  name: release-watcher
+  namespace: bparees
+spec:
+  selector:
+    matchLabels:
+      component: release-watcher
+  template:
+    metadata:
+      labels:
+        component: release-watcher
+    spec:
+      containers:      
+      - image: quay.io/bparees/release-watcher:latest
+        name: release-watcher
+        command:
+        - /release-watcher
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    component: release-watcher
+  name: release-watcher
+  namespace: bparees
+spec:
+  ports:
+  - name: main
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    component: release-watcher
+  sessionAffinity: None
+  type: ClusterIP
+---
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: release-watcher
+  namespace: bparees
+spec:
+  tls:
+    termination: Edge
+    insecureEdgeTerminationPolicy: Redirect
+  to:
+    kind: Service
+    name: release-watcher
