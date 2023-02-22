@@ -41,7 +41,7 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 		// if the latest accepted payload is stale, but there are non-stale payloads that have been built,
 		// flag it.  If the overall stream is stale(no recently built payloads), we'll flag it elsewhere.
 		if _, ok := allStale[stream]; !ok {
-			report += fmt.Sprintf("Release stream %s most recently accepted payload was %.1f days ago, latest built payload is < %.1f days old: "+releaseStreamUrl+"\n", stream, age.Hours()/24, builtStalenessLimit.Hours()/24, stream)
+			report += fmt.Sprintf("Release stream %s most recently accepted payload was %.1f days ago, latest built payload is < %.1f days old: "+releaseStreamUrl+"\n", stream, age.Hours()/24, acceptedStalenessLimit.Hours()/24, stream)
 		}
 	}
 
