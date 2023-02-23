@@ -110,7 +110,7 @@ func (o *options) createHandler() http.HandlerFunc {
 report - Generates human reports about which release streams do not have recently built or recently accepted payloads, based on the release info found at https://amd64.ocp.releases.ci.openshift.org/
 Current arguments:
   Accepted payloads must be newer than %0.1f hours
-  Payloads must be built within the last %0.1f hours
+  Payloads must have been built within the last %0.1f hours
   Ignoring releases older than 4.%d`, o.acceptedStalenessLimit.Hours(), o.builtStalenessLimit.Hours(), o.oldestMinor)
 			case strings.Contains(req.Event.Text, "report"):
 				msg.Text, err = generateReport(o.releaseAPIUrl, o.acceptedStalenessLimit, o.builtStalenessLimit, o.oldestMinor)

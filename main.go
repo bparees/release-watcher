@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	baseReleaseAPIUrl   = "https://amd64.ocp.releases.ci.openshift.org/api/v1"
-	acceptedReleasePath = "/releasestreams/accepted"
-	allReleasePath      = "/releasestreams/all"
+	baseReleaseAPIUrl   = "https://amd64.ocp.releases.ci.openshift.org"
+	acceptedReleasePath = "/api/v1/releasestreams/accepted"
+	allReleasePath      = "/api/v1/releasestreams/all"
 	releaseStreamUrl    = "https://amd64.ocp.releases.ci.openshift.org/#%s"
 )
 
@@ -21,8 +21,8 @@ var (
 	// match these two formats:
 	// 4.NNN.0-0.ci
 	// 4.NNN.0-0.nightly
-	zReleaseRegex = regexp.MustCompile(`4\.([1-9][0-9]*)\.0-0\.(ci|nightly)`)
-	//extractMinorRegex = regexp.MustCompile(`4\.([1-9][0-9]*)\.0`)
+	zReleaseRegex     = regexp.MustCompile(`4\.([1-9][0-9]*)\.0-0\.(ci|nightly)`)
+	extractMinorRegex = regexp.MustCompile(`4\.([1-9][0-9]*)\.[0-9]+`)
 	// YYYY-MM-DD-HHMMSS
 	extractDateRegex = regexp.MustCompile(`([0-9]{4})-([0-9]{2})-([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})$`)
 )
