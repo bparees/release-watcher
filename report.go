@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"sort"
 	"strconv"
 	"time"
 
@@ -45,9 +46,9 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 		// (and especially if the overall payloads are not stale), flag it.  If the overall stream is empty,
 		// we'll flag it further below.
 		if _, ok := allStale[stream]; !ok {
-			report += fmt.Sprintf("Release stream %s has no accepted payloads, but the stream contains recently built payloads: "+releaseStreamUrl+"\n", stream, stream)
+			report[stream] = append(report[stream], fmt.Sprintf("Has no accepted payloads, but the stream contains recently built payloads: "+releaseStreamUrl, stream))
 		} else if _, ok := allEmpty[stream]; !ok {
-			report += fmt.Sprintf("Release stream %s has no accepted payloads, but the stream contains built payloads: "+releaseStreamUrl+"\n", stream, stream)
+			report[stream] = append(report[stream], fmt.Sprintf("Has no accepted payloads, but the stream contains built payloads: "+releaseStreamUrl, stream))
 		}
 
 	}
@@ -55,20 +56,46 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 		// if the latest accepted payload is stale, but there are non-stale payloads that have been built,
 		// flag it.  If the overall stream is stale(no recently built payloads), we'll flag it elsewhere.
 		if _, ok := allStale[stream]; !ok {
-			report += fmt.Sprintf("Release stream %s most recently accepted payload was %.1f days ago, latest built payload is < %.1f days old: "+releaseStreamUrl+"\n", stream, age.Hours()/24, acceptedStalenessLimit.Hours()/24, stream)
+			report[stream] = append(report[stream], fmt.Sprintf("Most recently accepted payload was %.1f days ago, latest built payload is < %.1f days old: "+releaseStreamUrl, age.Hours()/24, acceptedStalenessLimit.Hours()/24, stream))
 		}
 	}
 
-	for _, s := range allEmpty {
-		report += fmt.Sprintf("Release stream %s has no built payloads: "+releaseStreamUrl+"\n", s, s)
+	for stream, _ := range allEmpty {
+		report[stream] = append(report[stream], fmt.Sprintf("Has no built payloads: "+releaseStreamUrl, stream))
 	}
 
 	_, allVeryStale := getEmptyAndStaleStreams(allReleases, builtStalenessLimit, oldestMinor)
 
-	for k, v := range allVeryStale {
-		report += fmt.Sprintf("Release stream %s most recently built payload was %.1f days ago: "+releaseStreamUrl+"\n", k, v.Hours()/24, k)
+	for stream, age := range allVeryStale {
+		report[stream] = append(report[stream], fmt.Sprintf("Most recently built payload was %.1f days ago: "+releaseStreamUrl, age.Hours()/24, stream))
 	}
-	return report, nil
+
+	streams := []string{}
+	for stream, _ := range report {
+		streams = append(streams, stream)
+	}
+
+	sort.Strings(streams)
+	sort.Slice(streams, func(i, j int) bool {
+		iMatches := extractMinorRegex.FindStringSubmatch(streams[i])
+		iVersion, _ := strconv.Atoi(iMatches[1])
+		jMatches := extractMinorRegex.FindStringSubmatch(streams[j])
+		jVersion, _ := strconv.Atoi(jMatches[1])
+		// this deliberately reverses the standard sorting order so we
+		// get highest to lowest.
+		return iVersion > jVersion
+
+	})
+
+	output := ""
+	for _, stream := range streams {
+		output += fmt.Sprintf("%s\n", stream)
+		for _, o := range report[stream] {
+			output += fmt.Sprintf("  - %s\n", o)
+		}
+		output += "\n"
+	}
+	return output, nil
 }
 
 func getReleaseStream(url string) (map[string][]string, error) {
@@ -214,8 +241,8 @@ func getUpgradeGraph(apiurl, channel string) (GraphMap, error) {
 	return graphMap, nil
 }
 
-func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThreshold time.Duration, oldestMinor int) string {
-	report := ""
+func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThreshold time.Duration, oldestMinor int) map[string][]string {
+	report := make(map[string][]string)
 	now := time.Now()
 	for release, payloads := range releases {
 
@@ -280,10 +307,10 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 			continue
 		}
 		if !foundPatch {
-			report += fmt.Sprintf("Release %s does not have a valid patch level upgrade %s: "+releaseStreamUrl+"\n", release, release)
+			report[release] = append(report[release], fmt.Sprintf("Does not have a valid patch level upgrade: "+releaseStreamUrl, release))
 		}
 		if !foundMinor {
-			report += fmt.Sprintf("Release %s does not have a valid minor level upgrade %s: "+releaseStreamUrl+"\n", release, release)
+			report[release] = append(report[release], fmt.Sprintf("Does not have a valid minor level upgrade: "+releaseStreamUrl, release))
 		}
 	}
 	return report
