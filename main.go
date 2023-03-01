@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"k8s.io/klog"
 )
 
@@ -50,6 +51,7 @@ type options struct {
 	slackAlias             string
 	acceptedStalenessLimit time.Duration
 	builtStalenessLimit    time.Duration
+	upgradeStalenessLimit  time.Duration
 }
 
 func main() {
@@ -64,12 +66,7 @@ func main() {
 	original.Set("alsologtostderr", "true")
 	original.Set("v", "2")
 
-	flagset := root.Flags()
-
-	flagset.AddGoFlagSet(flag.CommandLine)
-
-	flagset.AddGoFlag(original.Lookup("v"))
-
+	root.PersistentFlags().AddGoFlag(original.Lookup("v"))
 	if err := root.Execute(); err != nil {
 		klog.Exitf("error: %v", err)
 	}
@@ -90,11 +87,7 @@ func newReportCommand() *cobra.Command {
 		},
 	}
 	flagset := cmd.Flags()
-	flagset.StringVar(&o.releaseAPIUrl, "release-api-url", o.releaseAPIUrl, "The url of the release reporting api")
-	flagset.IntVar(&o.oldestMinor, "oldest-minor", 8, "The oldest minor release to analyze.  Release streams older than this will be ignored.  Specify only the minor value (e.g. \"13\")")
-	flagset.DurationVar(&o.acceptedStalenessLimit, "accepted-staleness-limit", 24*time.Hour, "How old an accepted payload can be before it is considered stale, in hours")
-	flagset.DurationVar(&o.builtStalenessLimit, "built-staleness-limit", 72*time.Hour, "How old an built payload can be before it is considered stale, in hours")
-
+	addSharedFlags(flagset, o)
 	return cmd
 }
 
@@ -112,18 +105,23 @@ func newBotCommand() *cobra.Command {
 			return o.runBot()
 		},
 	}
+
 	flagset := cmd.Flags()
 	flagset.StringVar(&o.slackAlias, "slack-alias", "", "Slack alias to tag in the generated report.  Leave empty to not tag anyone.")
-	flagset.StringVar(&o.releaseAPIUrl, "release-api-url", o.releaseAPIUrl, "The url of the release reporting api")
-	flagset.IntVar(&o.oldestMinor, "oldest-minor", 8, "The oldest minor release to analyze.  Release streams older than this will be ignored.  Specify only the minor value (e.g. \"13\")")
-	flagset.DurationVar(&o.acceptedStalenessLimit, "accepted-staleness-limit", 24*time.Hour, "How old an accepted payload can be before it is considered stale, in hours")
-	flagset.DurationVar(&o.builtStalenessLimit, "built-staleness-limit", 72*time.Hour, "How old an built payload can be before it is considered stale, in hours")
-
+	addSharedFlags(flagset, o)
 	return cmd
 }
 
+func addSharedFlags(flagset *pflag.FlagSet, o *options) {
+	flagset.StringVar(&o.releaseAPIUrl, "release-api-url", o.releaseAPIUrl, "The url of the release reporting api")
+	flagset.IntVar(&o.oldestMinor, "oldest-minor", 8, "The oldest minor release to analyze.  Release streams older than this will be ignored.  Specify only the minor value (e.g. \"13\")")
+	flagset.DurationVar(&o.acceptedStalenessLimit, "accepted-staleness-limit", 24*time.Hour, "How old an accepted payload can be before it is considered stale")
+	flagset.DurationVar(&o.builtStalenessLimit, "built-staleness-limit", 72*time.Hour, "How old an built payload can be before it is considered stale")
+	flagset.DurationVar(&o.upgradeStalenessLimit, "upgrade-staleness-limit", 72*time.Hour, "How old a successful upgrade attempt can be before it's considered stale")
+}
+
 func (o *options) runReport() error {
-	report, err := generateReport(o.releaseAPIUrl, o.acceptedStalenessLimit, o.builtStalenessLimit, o.oldestMinor)
+	report, err := generateReport(o.releaseAPIUrl, o.acceptedStalenessLimit, o.builtStalenessLimit, o.upgradeStalenessLimit, o.oldestMinor)
 	if err != nil {
 		return err
 	}

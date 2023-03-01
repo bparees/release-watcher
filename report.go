@@ -12,7 +12,7 @@ import (
 	"k8s.io/klog"
 )
 
-func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStalenessLimit time.Duration, oldestMinor int) (string, error) {
+func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStalenessLimit, upgradeStalenessLimit time.Duration, oldestMinor int) (string, error) {
 	acceptedReleases, err := getReleaseStream(releaseAPIUrl + acceptedReleasePath)
 	if err != nil {
 		return "", err
@@ -23,8 +23,9 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 		return "", err
 	}
 
-	// nightly and prerelease graph channels seem to include the same content currently.
-	nightlyGraph, err := getUpgradeGraph("https://amd64.ocp.releases.ci.openshift.org", "nightly")
+	// stable graph only includes successful edges.  nightly+prerelease include edges for any upgrade attempt that was
+	// made, regardless of whether the job passed.
+	nightlyGraph, err := getUpgradeGraph("https://amd64.ocp.releases.ci.openshift.org", "stable")
 	if err != nil {
 		return "", err
 	}
@@ -36,7 +37,8 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 		}
 	*/
 
-	report := checkUpgrades(nightlyGraph, acceptedReleases, acceptedStalenessLimit, oldestMinor)
+	//report := checkUpgrades(nightlyGraph, acceptedReleases, acceptedStalenessLimit, oldestMinor)
+	report := checkUpgrades(nightlyGraph, allReleases, upgradeStalenessLimit, oldestMinor)
 
 	acceptedEmpty, acceptedStale := getEmptyAndStaleStreams(acceptedReleases, acceptedStalenessLimit, oldestMinor)
 	allEmpty, allStale := getEmptyAndStaleStreams(allReleases, acceptedStalenessLimit, oldestMinor)
@@ -46,9 +48,9 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 		// (and especially if the overall payloads are not stale), flag it.  If the overall stream is empty,
 		// we'll flag it further below.
 		if _, ok := allStale[stream]; !ok {
-			report[stream] = append(report[stream], fmt.Sprintf("Has no accepted payloads, but the stream contains recently built payloads: "+releaseStreamUrl, stream))
+			report[stream] = append(report[stream], "Has no accepted payloads, but the stream contains recently built payloads")
 		} else if _, ok := allEmpty[stream]; !ok {
-			report[stream] = append(report[stream], fmt.Sprintf("Has no accepted payloads, but the stream contains built payloads: "+releaseStreamUrl, stream))
+			report[stream] = append(report[stream], "Has no accepted payloads, but the stream contains built payloads")
 		}
 
 	}
@@ -56,18 +58,18 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 		// if the latest accepted payload is stale, but there are non-stale payloads that have been built,
 		// flag it.  If the overall stream is stale(no recently built payloads), we'll flag it elsewhere.
 		if _, ok := allStale[stream]; !ok {
-			report[stream] = append(report[stream], fmt.Sprintf("Most recently accepted payload was %.1f days ago, latest built payload is < %.1f days old: "+releaseStreamUrl, age.Hours()/24, acceptedStalenessLimit.Hours()/24, stream))
+			report[stream] = append(report[stream], fmt.Sprintf("Most recently accepted payload was %.1f days ago, latest built payload is < %.1f days old", age.Hours()/24, acceptedStalenessLimit.Hours()/24))
 		}
 	}
 
 	for stream, _ := range allEmpty {
-		report[stream] = append(report[stream], fmt.Sprintf("Has no built payloads: "+releaseStreamUrl, stream))
+		report[stream] = append(report[stream], "Has no built payloads")
 	}
 
 	_, allVeryStale := getEmptyAndStaleStreams(allReleases, builtStalenessLimit, oldestMinor)
 
 	for stream, age := range allVeryStale {
-		report[stream] = append(report[stream], fmt.Sprintf("Most recently built payload was %.1f days ago: "+releaseStreamUrl, age.Hours()/24, stream))
+		report[stream] = append(report[stream], fmt.Sprintf("Most recently built payload was %.1f days ago", age.Hours()/24))
 	}
 
 	streams := []string{}
@@ -89,7 +91,7 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 
 	output := ""
 	for _, stream := range streams {
-		output += fmt.Sprintf("%s\n", stream)
+		output += fmt.Sprintf(releaseStreamUrl+"\n", stream)
 		for _, o := range report[stream] {
 			output += fmt.Sprintf("  - %s\n", o)
 		}
@@ -224,20 +226,6 @@ func getUpgradeGraph(apiurl, channel string) (GraphMap, error) {
 		}
 	}
 
-	/*
-		for _, node := range graph.Nodes {
-			fmt.Printf("%s from %s\n", node.Version, graph.Nodes[node.From].Version)
-		}
-	*/
-
-	/*
-		for to, fromNodes := range graphMap {
-			for _, from := range fromNodes {
-				fmt.Printf("%s from %s\n", to, from)
-			}
-		}
-	*/
-
 	return graphMap, nil
 }
 
@@ -259,7 +247,6 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 
 		foundMinor := false
 		foundPatch := false
-		hasRecentAcceptedPayload := false
 		for _, payload := range payloads {
 			ts, err := getPayloadTimestamp(payload)
 			if err != nil {
@@ -270,7 +257,6 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 			if age.Minutes() > stalenessThreshold.Minutes() {
 				continue
 			}
-			hasRecentAcceptedPayload = true
 			toMatches := extractMinorRegex.FindStringSubmatch(payload)
 			if toMatches == nil {
 				continue
@@ -301,16 +287,12 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 				}
 			}
 		}
-		if !hasRecentAcceptedPayload {
-			// if a release doesn't even have a recently accepted payload, don't worry about whether it has valid upgrades.
-			// we'll flag the fact that there aren't recently accepted payloads elsewhere.
-			continue
-		}
+
 		if !foundPatch {
-			report[release] = append(report[release], fmt.Sprintf("Does not have a valid patch level upgrade: "+releaseStreamUrl, release))
+			report[release] = append(report[release], "Does not have a valid patch level upgrade")
 		}
 		if !foundMinor {
-			report[release] = append(report[release], fmt.Sprintf("Does not have a valid minor level upgrade: "+releaseStreamUrl, release))
+			report[release] = append(report[release], "Does not have a valid minor level upgrade")
 		}
 	}
 	return report
