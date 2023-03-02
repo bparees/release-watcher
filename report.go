@@ -289,10 +289,10 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 		}
 
 		if !foundPatch {
-			report[release] = append(report[release], "Does not have a valid patch level upgrade")
+			report[release] = append(report[release], "Does not have a recent valid patch level upgrade")
 		}
 		if !foundMinor {
-			report[release] = append(report[release], "Does not have a valid minor level upgrade")
+			report[release] = append(report[release], "Does not have a recent valid minor level upgrade")
 		}
 	}
 	return report

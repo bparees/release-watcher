@@ -114,7 +114,7 @@ func newBotCommand() *cobra.Command {
 
 func addSharedFlags(flagset *pflag.FlagSet, o *options) {
 	flagset.StringVar(&o.releaseAPIUrl, "release-api-url", o.releaseAPIUrl, "The url of the release reporting api")
-	flagset.IntVar(&o.oldestMinor, "oldest-minor", 8, "The oldest minor release to analyze.  Release streams older than this will be ignored.  Specify only the minor value (e.g. \"13\")")
+	flagset.IntVar(&o.oldestMinor, "oldest-minor", 9, "The oldest minor release to analyze.  Release streams older than this will be ignored.  Specify only the minor value (e.g. \"13\")")
 	flagset.DurationVar(&o.acceptedStalenessLimit, "accepted-staleness-limit", 24*time.Hour, "How old an accepted payload can be before it is considered stale")
 	flagset.DurationVar(&o.builtStalenessLimit, "built-staleness-limit", 72*time.Hour, "How old an built payload can be before it is considered stale")
 	flagset.DurationVar(&o.upgradeStalenessLimit, "upgrade-staleness-limit", 72*time.Hour, "How old a successful upgrade attempt can be before it's considered stale")
