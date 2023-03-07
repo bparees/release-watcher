@@ -255,11 +255,12 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 			klog.V(4).Infof("not checking upgrade status for non z-stream release %s", release)
 			continue
 		}
-		if v, _ := strconv.Atoi(matches[1]); v < oldestMinor {
+		v, _ := strconv.Atoi(matches[1])
+		if v < oldestMinor {
 			klog.V(4).Infof("ignoring release %s because it is older than the oldest desired minor %d\n", release, oldestMinor)
 			continue
 		}
-		if v, _ := strconv.Atoi(matches[1]); v < newestMinor {
+		if v > newestMinor {
 			klog.V(4).Infof("ignoring release %s because it is newer than the newest desired minor %d\n", release, newestMinor)
 			continue
 		}
