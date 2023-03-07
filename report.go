@@ -12,7 +12,7 @@ import (
 	"k8s.io/klog"
 )
 
-func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStalenessLimit, upgradeStalenessLimit time.Duration, oldestMinor int) (string, error) {
+func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStalenessLimit, upgradeStalenessLimit time.Duration, oldestMinor, newestMinor int) (string, error) {
 	acceptedReleases, err := getReleaseStream(releaseAPIUrl + acceptedReleasePath)
 	if err != nil {
 		return "", err
@@ -38,10 +38,10 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 	*/
 
 	//report := checkUpgrades(nightlyGraph, acceptedReleases, acceptedStalenessLimit, oldestMinor)
-	report := checkUpgrades(nightlyGraph, allReleases, upgradeStalenessLimit, oldestMinor)
+	report := checkUpgrades(nightlyGraph, allReleases, upgradeStalenessLimit, oldestMinor, newestMinor)
 
-	acceptedEmpty, acceptedStale := getEmptyAndStaleStreams(acceptedReleases, acceptedStalenessLimit, oldestMinor)
-	allEmpty, allStale := getEmptyAndStaleStreams(allReleases, acceptedStalenessLimit, oldestMinor)
+	acceptedEmpty, acceptedStale := getEmptyAndStaleStreams(acceptedReleases, acceptedStalenessLimit, oldestMinor, newestMinor)
+	allEmpty, allStale := getEmptyAndStaleStreams(allReleases, acceptedStalenessLimit, oldestMinor, newestMinor)
 
 	for stream, _ := range acceptedEmpty {
 		// if there are no accepted payloads, but the overall payloads set for the stream is not empty
@@ -66,7 +66,7 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 		report[stream] = append(report[stream], "Has no built payloads")
 	}
 
-	_, allVeryStale := getEmptyAndStaleStreams(allReleases, builtStalenessLimit, oldestMinor)
+	_, allVeryStale := getEmptyAndStaleStreams(allReleases, builtStalenessLimit, oldestMinor, newestMinor)
 
 	for stream, age := range allVeryStale {
 		report[stream] = append(report[stream], fmt.Sprintf("Most recently built payload was %.1f days ago", age.Hours()/24))
@@ -90,6 +90,7 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 	})
 
 	output := ""
+
 	for _, stream := range streams {
 		output += fmt.Sprintf(releaseStreamUrl+"\n", stream)
 		for _, o := range report[stream] {
@@ -97,6 +98,7 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 		}
 		output += "\n"
 	}
+	output += fmt.Sprintf("\nIgnored releases older than 4.%d.z and newer than 4.%d.z\n", oldestMinor, newestMinor)
 	return output, nil
 }
 
@@ -119,7 +121,7 @@ func getReleaseStream(url string) (map[string][]string, error) {
 	return releases, nil
 }
 
-func getEmptyAndStaleStreams(releases map[string][]string, threshold time.Duration, oldestMinor int) (map[string]struct{}, map[string]time.Duration) {
+func getEmptyAndStaleStreams(releases map[string][]string, threshold time.Duration, oldestMinor, newestMinor int) (map[string]struct{}, map[string]time.Duration) {
 	emptyStreams := make(map[string]struct{})
 	staleStreams := make(map[string]time.Duration)
 	releaseKeys := reflect.ValueOf(releases).MapKeys()
@@ -135,6 +137,10 @@ func getEmptyAndStaleStreams(releases map[string][]string, threshold time.Durati
 		}
 		if v, _ := strconv.Atoi(matches[1]); v < oldestMinor {
 			klog.V(4).Infof("ignoring release %s because it is older than the oldest desired minor %d\n", stream, oldestMinor)
+			continue
+		}
+		if v, _ := strconv.Atoi(matches[1]); v > newestMinor {
+			klog.V(4).Infof("ignoring release %s because it is newer than the newest desired minor %d\n", stream, newestMinor)
 			continue
 		}
 		if len(releases[stream]) == 0 {
@@ -229,7 +235,7 @@ func getUpgradeGraph(apiurl, channel string) (GraphMap, error) {
 	return graphMap, nil
 }
 
-func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThreshold time.Duration, oldestMinor int) map[string][]string {
+func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThreshold time.Duration, oldestMinor, newestMinor int) map[string][]string {
 	report := make(map[string][]string)
 	now := time.Now()
 	for release, payloads := range releases {
@@ -242,6 +248,10 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 		}
 		if v, _ := strconv.Atoi(matches[1]); v < oldestMinor {
 			klog.V(4).Infof("ignoring release %s because it is older than the oldest desired minor %d\n", release, oldestMinor)
+			continue
+		}
+		if v, _ := strconv.Atoi(matches[1]); v < newestMinor {
+			klog.V(4).Infof("ignoring release %s because it is newer than the newest desired minor %d\n", release, newestMinor)
 			continue
 		}
 

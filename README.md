@@ -53,7 +53,8 @@ https://amd64.ocp.releases.ci.openshift.org/#4.9.0-0.nightly
 
 * --accepted-staleness-limit duration   How old an accepted payload can be before it is considered stale (default 24h0m0s)
 * --built-staleness-limit duration      How old an built payload can be before it is considered stale (default 72h0m0s)
-* --oldest-minor int                    The oldest minor release to analyze.  Release streams older than this will be ignored.  Specify only the minor value (e.g. "13") (default 9)
+* --newest-minor int                    The newest minor release to analyze.  Release streams newer than this will be ignored.  Specify only the minor value (e.g. "12") (default 12)
+* --oldest-minor int                    The oldest minor release to analyze.  Release streams older than this will be ignored.  Specify only the minor value (e.g. "9") (default 9)
 * --release-api-url string              The url of the release reporting api (default "https://amd64.ocp.releases.ci.openshift.org")
 * --upgrade-staleness-limit duration    How old a successful upgrade attempt can be before it's considered stale (default 72h0m0s)
 
@@ -61,6 +62,3 @@ https://amd64.ocp.releases.ci.openshift.org/#4.9.0-0.nightly
 ## TODO
 
 * Specify staleness thresholds per release stream or automatically increase them for older releases
-* Allow a "newest' minor version to be specified so reporting can ignore the non-GA release streams which are monitored
-  differently.  The risk with adding this is if a default is configured and not updated, the reporting tool will start
-  ignoring releases that have gone GA over time.
