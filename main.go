@@ -53,6 +53,7 @@ type options struct {
 	acceptedStalenessLimit time.Duration
 	builtStalenessLimit    time.Duration
 	upgradeStalenessLimit  time.Duration
+	includeHealthy         bool
 }
 
 func main() {
@@ -120,10 +121,11 @@ func addSharedFlags(flagset *pflag.FlagSet, o *options) {
 	flagset.DurationVar(&o.acceptedStalenessLimit, "accepted-staleness-limit", 24*time.Hour, "How old an accepted payload can be before it is considered stale")
 	flagset.DurationVar(&o.builtStalenessLimit, "built-staleness-limit", 72*time.Hour, "How old an built payload can be before it is considered stale")
 	flagset.DurationVar(&o.upgradeStalenessLimit, "upgrade-staleness-limit", 72*time.Hour, "How old a successful upgrade attempt can be before it's considered stale")
+	flagset.BoolVar(&o.includeHealthy, "include-healthy", false, "Report about healthy payloads, not just failures")
 }
 
 func (o *options) runReport() error {
-	report, err := generateReport(o.releaseAPIUrl, o.acceptedStalenessLimit, o.builtStalenessLimit, o.upgradeStalenessLimit, o.oldestMinor, o.newestMinor)
+	report, err := generateReport(o.releaseAPIUrl, o.acceptedStalenessLimit, o.builtStalenessLimit, o.upgradeStalenessLimit, o.oldestMinor, o.newestMinor, o.includeHealthy)
 	if err != nil {
 		return err
 	}

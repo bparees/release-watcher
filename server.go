@@ -113,7 +113,7 @@ Current arguments:
   Payloads must have been built within the last %0.1f hours
   Ignoring releases older than 4.%d`, o.acceptedStalenessLimit.Hours(), o.builtStalenessLimit.Hours(), o.oldestMinor)
 			case strings.Contains(req.Event.Text, "report"):
-				msg.Text, err = generateReport(o.releaseAPIUrl, o.acceptedStalenessLimit, o.builtStalenessLimit, o.upgradeStalenessLimit, o.oldestMinor, o.newestMinor)
+				msg.Text, err = generateReport(o.releaseAPIUrl, o.acceptedStalenessLimit, o.builtStalenessLimit, o.upgradeStalenessLimit, o.oldestMinor, o.newestMinor, o.includeHealthy)
 				if err != nil {
 					msg.Text = fmt.Sprintf("Sorry, an error occurred generating the report: %v", err)
 				}

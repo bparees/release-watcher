@@ -12,7 +12,7 @@ import (
 	"k8s.io/klog"
 )
 
-func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStalenessLimit, upgradeStalenessLimit time.Duration, oldestMinor, newestMinor int) (string, error) {
+func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStalenessLimit, upgradeStalenessLimit time.Duration, oldestMinor, newestMinor int, includeHealthy bool) (string, error) {
 	acceptedReleases, err := getReleaseStream(releaseAPIUrl + acceptedReleasePath)
 	if err != nil {
 		return "", err
@@ -38,7 +38,7 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 	*/
 
 	//report := checkUpgrades(nightlyGraph, acceptedReleases, acceptedStalenessLimit, oldestMinor)
-	report := checkUpgrades(nightlyGraph, allReleases, upgradeStalenessLimit, oldestMinor, newestMinor)
+	report := checkUpgrades(nightlyGraph, allReleases, upgradeStalenessLimit, oldestMinor, newestMinor, includeHealthy)
 
 	acceptedEmpty, acceptedStale := getEmptyAndStaleStreams(acceptedReleases, acceptedStalenessLimit, oldestMinor, newestMinor)
 	allEmpty, allStale := getEmptyAndStaleStreams(allReleases, acceptedStalenessLimit, oldestMinor, newestMinor)
@@ -235,7 +235,16 @@ func getUpgradeGraph(apiurl, channel string) (GraphMap, error) {
 	return graphMap, nil
 }
 
-func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThreshold time.Duration, oldestMinor, newestMinor int) map[string][]string {
+type found struct {
+	Version string
+	Age     time.Duration
+}
+
+func (f *found) Days() float64 {
+	return f.Age.Hours() / 24
+}
+
+func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThreshold time.Duration, oldestMinor, newestMinor int, includeHealthy bool) map[string][]string {
 	report := make(map[string][]string)
 	now := time.Now()
 	for release, payloads := range releases {
@@ -243,20 +252,21 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 		matches := zReleaseRegex.FindStringSubmatch(release)
 
 		if matches == nil {
-			//fmt.Printf("ignoring non z-stream release %s\n", stream)
+			klog.V(4).Infof("not checking upgrade status for non z-stream release %s", release)
 			continue
 		}
-		if v, _ := strconv.Atoi(matches[1]); v < oldestMinor {
+		v, _ := strconv.Atoi(matches[1])
+		if v < oldestMinor {
 			klog.V(4).Infof("ignoring release %s because it is older than the oldest desired minor %d\n", release, oldestMinor)
 			continue
 		}
-		if v, _ := strconv.Atoi(matches[1]); v < newestMinor {
+		if v > newestMinor {
 			klog.V(4).Infof("ignoring release %s because it is newer than the newest desired minor %d\n", release, newestMinor)
 			continue
 		}
 
-		foundMinor := false
-		foundPatch := false
+		var foundMinor *found
+		var foundPatch *found
 		for _, payload := range payloads {
 			ts, err := getPayloadTimestamp(payload)
 			if err != nil {
@@ -285,12 +295,18 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 
 				klog.V(4).Infof("Accepted payload %s upgrades from %s\n", payload, from)
 				if toVersion == fromVersion {
-					foundPatch = true
+					foundPatch = &found{
+						Version: from,
+						Age:     age,
+					}
 				}
 				if toVersion == fromVersion+1 {
-					foundMinor = true
+					foundMinor = &found{
+						Version: from,
+						Age:     age,
+					}
 				}
-				if foundMinor && foundPatch {
+				if foundMinor != nil && foundPatch != nil {
 					// we have found a recent payload in the set of accepted payloads this release, which successfully upgraded from a previous minor
 					// and a previous patch, so we don't need to continue checking payloads for this release.
 					break
@@ -298,11 +314,15 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 			}
 		}
 
-		if !foundPatch {
+		if foundPatch == nil {
 			report[release] = append(report[release], "Does not have a recent valid patch level upgrade")
+		} else if includeHealthy {
+			report[release] = append(report[release], fmt.Sprintf("Has a recent valid patch level upgrade from %s %0.1f days ago", foundPatch.Version, foundPatch.Days()))
 		}
-		if !foundMinor {
+		if foundMinor == nil {
 			report[release] = append(report[release], "Does not have a recent valid minor level upgrade")
+		} else if includeHealthy {
+			report[release] = append(report[release], fmt.Sprintf("Has a recent valid minor level upgrade from %s %0.1f days ago", foundMinor.Version, foundMinor.Days()))
 		}
 	}
 	return report
