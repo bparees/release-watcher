@@ -243,7 +243,7 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 		matches := zReleaseRegex.FindStringSubmatch(release)
 
 		if matches == nil {
-			//fmt.Printf("ignoring non z-stream release %s\n", stream)
+			klog.V(4).Infof("not checking upgrade status for non z-stream release %s", release)
 			continue
 		}
 		if v, _ := strconv.Atoi(matches[1]); v < oldestMinor {
