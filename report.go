@@ -37,13 +37,13 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 
 	report := checkUpgrades(stableGraph, allReleases, upgradeStalenessLimit, oldestMinor, newestMinor, includeHealthy)
 
-	klog.V(2).Info("Checking streams for accepted payloads\n")
+	klog.V(4).Info("Checking streams for accepted payloads\n")
 	acceptedEmpty, acceptedStale := getEmptyAndStaleStreams(acceptedReleases, acceptedStalenessLimit, oldestMinor, newestMinor)
-	klog.V(2).Info("Checking streams for all payloads\n")
+	klog.V(4).Info("Checking streams for all payloads\n")
 	allEmpty, allStale := getEmptyAndStaleStreams(allReleases, acceptedStalenessLimit, oldestMinor, newestMinor)
 
 	for stream, _ := range acceptedEmpty {
-		klog.V(2).Infof("Examining stream %s which has no accepted payloads", stream)
+		klog.V(4).Infof("Examining stream %s which has no accepted payloads", stream)
 		// if there are no accepted payloads, but the overall payloads set for the stream is not empty
 		// (and especially if the overall payloads are not stale), flag it.  If the overall stream is empty,
 		// we'll flag it further below.
@@ -66,7 +66,7 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 		report[stream].unhealthy = true
 	}
 
-	klog.V(2).Infof("Checking streams for very stale payloads\n")
+	klog.V(4).Infof("Checking streams for very stale payloads\n")
 	_, allVeryStale := getEmptyAndStaleStreams(allReleases, builtStalenessLimit, oldestMinor, newestMinor)
 
 	for stream, age := range allVeryStale {
