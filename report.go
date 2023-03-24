@@ -37,10 +37,13 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 
 	report := checkUpgrades(stableGraph, allReleases, upgradeStalenessLimit, oldestMinor, newestMinor, includeHealthy)
 
+	klog.V(2).Info("Checking streams for accepted payloads\n")
 	acceptedEmpty, acceptedStale := getEmptyAndStaleStreams(acceptedReleases, acceptedStalenessLimit, oldestMinor, newestMinor)
+	klog.V(2).Info("Checking streams for all payloads\n")
 	allEmpty, allStale := getEmptyAndStaleStreams(allReleases, acceptedStalenessLimit, oldestMinor, newestMinor)
 
 	for stream, _ := range acceptedEmpty {
+		klog.V(2).Infof("Examining stream %s which has no accepted payloads", stream)
 		// if there are no accepted payloads, but the overall payloads set for the stream is not empty
 		// (and especially if the overall payloads are not stale), flag it.  If the overall stream is empty,
 		// we'll flag it further below.
@@ -54,12 +57,8 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 
 	}
 	for stream, age := range acceptedStale {
-		// if the latest accepted payload is stale, but there are non-stale payloads that have been built,
-		// flag it.  If the overall stream is stale(no recently built payloads), we'll flag it elsewhere.
-		if _, ok := allStale[stream]; !ok {
-			report[stream].messages = append(report[stream].messages, fmt.Sprintf("Most recently accepted payload was %.1f days ago, latest built payload is < %.1f days old", age.Hours()/24, acceptedStalenessLimit.Hours()/24))
-			report[stream].unhealthy = true
-		}
+		report[stream].messages = append(report[stream].messages, fmt.Sprintf("Most recently accepted payload > %.1f days, last accepted was %.1f days ago", acceptedStalenessLimit.Hours()/24, age.Hours()/24))
+		report[stream].unhealthy = true
 	}
 
 	for stream, _ := range allEmpty {
@@ -67,6 +66,7 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 		report[stream].unhealthy = true
 	}
 
+	klog.V(2).Infof("Checking streams for very stale payloads\n")
 	_, allVeryStale := getEmptyAndStaleStreams(allReleases, builtStalenessLimit, oldestMinor, newestMinor)
 
 	for stream, age := range allVeryStale {
@@ -149,6 +149,7 @@ func getEmptyAndStaleStreams(releases map[string][]string, threshold time.Durati
 			continue
 		}
 		if len(releases[stream]) == 0 {
+			klog.V(4).Infof("Release %s has no payloads\n", stream)
 			emptyStreams[stream] = struct{}{}
 			continue
 		}
@@ -162,15 +163,17 @@ func getEmptyAndStaleStreams(releases map[string][]string, threshold time.Durati
 			}
 			delta := now.Sub(ts)
 			if delta.Minutes() < threshold.Minutes() {
-				//fmt.Printf("Release %s in stream %s is %d minutes old!\n", r, stream, delta)
+				klog.V(4).Infof("Release %s in stream %s is fresh: %0.1f hours old (threshold is %0.1f)\n", payload, stream, delta.Hours(), threshold.Hours())
 				freshPayload = true
+			} else {
+				klog.V(4).Infof("Release %s in stream %s is stale: %0.1f hours old (threshold is %0.1f)\n", payload, stream, delta.Hours(), threshold.Hours())
 			}
 			if ts.After(newest) {
 				newest = ts
 			}
 		}
 		if !freshPayload {
-			//fmt.Printf("Release stream %s does not have a recent payload: "+releaseStreamUrl+"\n", stream, stream)
+			klog.V(4).Infof("Release stream %s does not have a recent payload: "+releaseStreamUrl+"\n", stream, stream)
 			staleStreams[stream] = now.Sub(newest)
 		}
 	}
@@ -299,7 +302,7 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 				}
 				fromVersion, _ := strconv.Atoi(fromMatches[1])
 
-				klog.V(4).Infof("Accepted payload %s upgrades from %s\n", payload, from)
+				klog.V(4).Infof("Payload %s successfully upgrades from %s\n", payload, from)
 				if toVersion == fromVersion {
 					foundPatch = &found{
 						Version: from,
@@ -313,7 +316,7 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 					}
 				}
 				if foundMinor != nil && foundPatch != nil {
-					// we have found a recent payload in the set of accepted payloads this release, which successfully upgraded from a previous minor
+					// we have found a recent payload in the set of payloads this release, which successfully upgraded from a previous minor
 					// and a previous patch, so we don't need to continue checking payloads for this release.
 					break
 				}
