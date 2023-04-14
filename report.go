@@ -94,6 +94,9 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 	output := ""
 
 	for _, stream := range streams {
+		if !(report[stream].unhealthy || includeHealthy) {
+			continue
+		}
 		output += fmt.Sprintf(releaseStreamUrl+"\n", stream)
 		if report[stream].unhealthy && includeHealthy {
 			output += "  - WARNING: Release stream is unhealthy\n"
