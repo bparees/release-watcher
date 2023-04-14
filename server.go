@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +22,7 @@ var (
 	mutex          = &sync.Mutex{}
 	msgCache       = make(map[string]struct{})
 	auth_token     string
-	patchmanagerId = "U9ARYTT7Z"
+	patchmanagerId = "SMZ7PJ1L0"
 )
 
 type Request struct {
@@ -101,50 +102,102 @@ func (o *options) createHandler() http.HandlerFunc {
 			mutex.Unlock()
 			klog.V(4).Infof("saw message event: %#v\n", req.Event)
 
-			msg := PostMessage{}
-			msg.Channel = req.Event.Channel
-
+			msg := ""
 			switch {
 			case strings.Contains(req.Event.Text, "help"):
-				msg.Text = fmt.Sprintf(`help - help
+				sendMessage(fmt.Sprintf(`help - help
 report - Generates human reports about which release streams do not have recently built or recently accepted payloads, based on the release info found at https://amd64.ocp.releases.ci.openshift.org/
-Current arguments:
+Arguments:
+  min=X - only look at z-streams with a minimum version of X, e.g. min=9
+  max=X - only look at z-streams with a maximum version of X, e.g. max=12
+  healthy - include healthy z-streams in the report
+  tag - tag patch manager with the report output
+Current settings:
   Accepted payloads must be newer than %0.1f hours
   Payloads must have been built within the last %0.1f hours
-  Ignoring releases older than 4.%d`, o.acceptedStalenessLimit.Hours(), o.builtStalenessLimit.Hours(), o.oldestMinor)
+  Ignoring releases older than 4.%d and newer than 4.%d`, o.acceptedStalenessLimit.Hours(), o.builtStalenessLimit.Hours(), o.oldestMinor, o.newestMinor),
+					req.Event.Channel)
 			case strings.Contains(req.Event.Text, "report"):
-				msg.Text, err = generateReport(o.releaseAPIUrl, o.acceptedStalenessLimit, o.builtStalenessLimit, o.upgradeStalenessLimit, o.oldestMinor, o.newestMinor, o.includeHealthy)
-				if err != nil {
-					msg.Text = fmt.Sprintf("Sorry, an error occurred generating the report: %v", err)
+				reportOptions := *o
+				reportOptions.includeHealthy = false
+				tagPatchManager := false
+
+				args := strings.Split(req.Event.Text, " ")
+				for _, arg := range args {
+					if arg == "tag" {
+						tagPatchManager = true
+					}
+
+					if arg == "healthy" {
+						reportOptions.includeHealthy = true
+					}
+					if strings.Contains(arg, "=") {
+						v := strings.Split(arg, "=")
+						switch v[0] {
+						case "min":
+							i, err := strconv.Atoi(v[1])
+							if err != nil {
+								sendMessage(fmt.Sprintf("Error parsing min z-stream version value %q: %s", v[1], err), req.Event.Channel)
+								return
+							}
+							reportOptions.oldestMinor = i
+
+						case "max":
+							i, err := strconv.Atoi(v[1])
+							if err != nil {
+								sendMessage(fmt.Sprintf("Error parsing max z-stream version value %q: %s", v[1], err), req.Event.Channel)
+								return
+							}
+							reportOptions.newestMinor = i
+						}
+					}
+
 				}
+
+				msg, err = generateReport(reportOptions.releaseAPIUrl, reportOptions.acceptedStalenessLimit, reportOptions.builtStalenessLimit, reportOptions.upgradeStalenessLimit, reportOptions.oldestMinor, reportOptions.newestMinor, reportOptions.includeHealthy)
+				if err != nil {
+					msg = fmt.Sprintf("Sorry, an error occurred generating the report: %v", err)
+				}
+				if tagPatchManager {
+					msg = fmt.Sprintf("<!subteam^%s> here is the latest payload health report\n\n%s", patchmanagerId, msg)
+				}
+
 			default:
-				msg.Text = fmt.Sprintf("Sorry, I couldn't process that request: %s", req.Event.Text)
+				msg = fmt.Sprintf("Sorry, I couldn't process that request: %s", req.Event.Text)
 			}
 
-			// never output our own name, so we don't trigger ourselves
-			//fmt.Printf("original response: %s\n", msg.Text)
-			msg.Text = strings.Replace(msg.Text, "@UE23Q9BFY", "OCP Payload Reporter", -1)
-			//fmt.Printf("replaced response: %s\n", msg.Text)
-
-			msgJson, _ := json.Marshal(msg)
-
-			fmt.Printf("msg response json: %s\n", msgJson)
-			req, err := http.NewRequest("POST", "https://slack.com/api/chat.postMessage", bytes.NewBuffer(msgJson))
-			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", auth_token))
-
-			client := &http.Client{}
-			resp, err := client.Do(req)
+			err = sendMessage(msg, req.Event.Channel)
 			if err != nil {
-				fmt.Printf("error posting chat message: %v", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+			} else {
+				w.WriteHeader(http.StatusOK)
 			}
-			//fmt.Printf("chat message response: %#v\n", resp)
-			resp.Body.Close()
-
-			w.WriteHeader(http.StatusOK)
-			//respJson, _ := json.Marshal(resp)
-			//io.WriteString(w, string(respJson))
 		}
 	}
+}
+
+func sendMessage(msg, channel string) error {
+	post := PostMessage{}
+	post.Channel = channel
+	// never output our own name, so we don't trigger ourselves
+	//fmt.Printf("original response: %s\n", msg.Text)
+	post.Text = strings.Replace(msg, "@UE23Q9BFY", "OCP Payload Reporter", -1)
+	//fmt.Printf("replaced response: %s\n", msg.Text)
+
+	postJson, _ := json.Marshal(post)
+
+	fmt.Printf("msg response json: %s\n", postJson)
+	req, err := http.NewRequest("POST", "https://slack.com/api/chat.postMessage", bytes.NewBuffer(postJson))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", auth_token))
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	// fmt.Printf("chat message response: %#v\n", resp)
+	resp.Body.Close()
+	if err != nil {
+		fmt.Printf("error posting chat message: %v", err)
+		return err
+	}
+	return nil
 }
