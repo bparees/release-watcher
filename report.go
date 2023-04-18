@@ -99,10 +99,10 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 		}
 		output += fmt.Sprintf(releaseStreamUrl+"\n", stream)
 		if report[stream].unhealthy && includeHealthy {
-			output += "  - WARNING: Release stream is unhealthy\n"
+			output += "  * *WARNING:* Release stream is unhealthy\n"
 		}
 		for _, o := range report[stream].messages {
-			output += fmt.Sprintf("  - %s\n", o)
+			output += fmt.Sprintf("  * %s\n", o)
 		}
 		output += "\n"
 	}

@@ -49,9 +49,14 @@ type VerificationResponse struct {
 }
 
 type PostMessage struct {
-	Token   string `json:"token"`
-	Channel string `json:"channel"`
-	Text    string `json:"text"`
+	Token    string `json:"token"`
+	Channel  string `json:"channel"`
+	Text     string `json:"text"`
+	ThreadTS string `json:"thread_ts,omitempty"`
+}
+
+type PostMessageResponse struct {
+	TS string `json:"ts"`
 }
 
 func (o *options) serve() {
@@ -116,7 +121,7 @@ Current settings:
   Accepted payloads must be newer than %0.1f hours
   Payloads must have been built within the last %0.1f hours
   Ignoring releases older than 4.%d and newer than 4.%d`, o.acceptedStalenessLimit.Hours(), o.builtStalenessLimit.Hours(), o.oldestMinor, o.newestMinor),
-					req.Event.Channel)
+					req.Event.Channel, "")
 			case strings.Contains(req.Event.Text, "report"):
 				reportOptions := *o
 				reportOptions.includeHealthy = false
@@ -137,7 +142,7 @@ Current settings:
 						case "min":
 							i, err := strconv.Atoi(v[1])
 							if err != nil {
-								sendMessage(fmt.Sprintf("Error parsing min z-stream version value %q: %s", v[1], err), req.Event.Channel)
+								sendMessage(fmt.Sprintf("Error parsing min z-stream version value %q: %s", v[1], err), req.Event.Channel, "")
 								return
 							}
 							reportOptions.oldestMinor = i
@@ -145,7 +150,7 @@ Current settings:
 						case "max":
 							i, err := strconv.Atoi(v[1])
 							if err != nil {
-								sendMessage(fmt.Sprintf("Error parsing max z-stream version value %q: %s", v[1], err), req.Event.Channel)
+								sendMessage(fmt.Sprintf("Error parsing max z-stream version value %q: %s", v[1], err), req.Event.Channel, "")
 								return
 							}
 							reportOptions.newestMinor = i
@@ -159,14 +164,22 @@ Current settings:
 					msg = fmt.Sprintf("Sorry, an error occurred generating the report: %v", err)
 				}
 				if tagPatchManager {
-					msg = fmt.Sprintf("<!subteam^%s> here is the latest payload health report\n\n%s", patchmanagerId, msg)
+					if reportOptions.includeHealthy {
+						msg = fmt.Sprintf("<!subteam^%s> here is the latest payload health report\n\n%s", patchmanagerId, msg)
+					} else {
+						msg = fmt.Sprintf("<!subteam^%s> here are the currently unhealthy payload streams that need investigation:\n\n%s", patchmanagerId, msg)
+					}
 				}
 
 			default:
 				msg = fmt.Sprintf("Sorry, I couldn't process that request: %s", req.Event.Text)
 			}
 
-			err = sendMessage(msg, req.Event.Channel)
+			ts, err := sendMessage("Latest payload stream health report thread", req.Event.Channel, "")
+			if err != nil {
+				return
+			}
+			_, err = sendMessage(msg, req.Event.Channel, ts)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			} else {
@@ -176,7 +189,7 @@ Current settings:
 	}
 }
 
-func sendMessage(msg, channel string) error {
+func sendMessage(msg, channel, thread string) (string, error) {
 	post := PostMessage{}
 	post.Channel = channel
 	// never output our own name, so we don't trigger ourselves
@@ -184,20 +197,35 @@ func sendMessage(msg, channel string) error {
 	post.Text = strings.Replace(msg, "@UE23Q9BFY", "OCP Payload Reporter", -1)
 	//fmt.Printf("replaced response: %s\n", msg.Text)
 
+	if thread != "" {
+		post.ThreadTS = thread
+	}
+
 	postJson, _ := json.Marshal(post)
 
-	fmt.Printf("msg response json: %s\n", postJson)
+	fmt.Printf("msg post json: %s\n", postJson)
 	req, err := http.NewRequest("POST", "https://slack.com/api/chat.postMessage", bytes.NewBuffer(postJson))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", auth_token))
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
-	// fmt.Printf("chat message response: %#v\n", resp)
-	resp.Body.Close()
 	if err != nil {
 		fmt.Printf("error posting chat message: %v", err)
-		return err
+		return "", err
 	}
-	return nil
+	// fmt.Printf("chat message response: %#v\n", resp)
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("error reading message response body: %v\n", err)
+		return "", err
+	}
+	msgResp := PostMessageResponse{}
+	if err := json.Unmarshal([]byte(body), &msgResp); err != nil {
+		fmt.Printf("error reading message response body: %v\n", err)
+		return "", err
+	}
+	resp.Body.Close()
+	return msgResp.TS, nil
 }
