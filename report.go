@@ -106,6 +106,9 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 		}
 		output += "\n"
 	}
+	if !includeHealthy && len(output) == 0 {
+		output += "No unhealthy payload streams detected\n"
+	}
 	output += fmt.Sprintf("\nIgnored releases older than 4.%d.z and newer than 4.%d.z\n", oldestMinor, newestMinor)
 	return output, nil
 }
