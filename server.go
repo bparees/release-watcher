@@ -107,10 +107,12 @@ func (o *options) createHandler() http.HandlerFunc {
 			mutex.Unlock()
 			klog.V(4).Infof("saw message event: %#v\n", req.Event)
 
+			subject := ""
 			msg := ""
+			thread := req.Event.TS
 			switch {
 			case strings.Contains(req.Event.Text, "help"):
-				sendMessage(fmt.Sprintf(`help - help
+				subject = fmt.Sprintf(`help - help
 report - Generates human reports about which release streams do not have recently built or recently accepted payloads, based on the release info found at https://amd64.ocp.releases.ci.openshift.org/
 Arguments:
   min=X - only look at z-streams with a minimum version of X, e.g. min=9
@@ -120,8 +122,7 @@ Arguments:
 Current settings:
   Accepted payloads must be newer than %0.1f hours
   Payloads must have been built within the last %0.1f hours
-  Ignoring releases older than 4.%d and newer than 4.%d`, o.acceptedStalenessLimit.Hours(), o.builtStalenessLimit.Hours(), o.oldestMinor, o.newestMinor),
-					req.Event.Channel, "")
+  Ignoring releases older than 4.%d and newer than 4.%d`, o.acceptedStalenessLimit.Hours(), o.builtStalenessLimit.Hours(), o.oldestMinor, o.newestMinor)
 			case strings.Contains(req.Event.Text, "report"):
 				reportOptions := *o
 				reportOptions.includeHealthy = false
@@ -142,7 +143,9 @@ Current settings:
 						case "min":
 							i, err := strconv.Atoi(v[1])
 							if err != nil {
-								sendMessage(fmt.Sprintf("Error parsing min z-stream version value %q: %s", v[1], err), req.Event.Channel, "")
+								err = fmt.Errorf("Error parsing min z-stream version value %q: %w", v[1], err)
+								sendMessage(err.Error(), req.Event.Channel, thread)
+								http.Error(w, err.Error(), http.StatusInternalServerError)
 								return
 							}
 							reportOptions.oldestMinor = i
@@ -150,7 +153,9 @@ Current settings:
 						case "max":
 							i, err := strconv.Atoi(v[1])
 							if err != nil {
-								sendMessage(fmt.Sprintf("Error parsing max z-stream version value %q: %s", v[1], err), req.Event.Channel, "")
+								err = fmt.Errorf("Error parsing max z-stream version value %q: %w", v[1], err)
+								sendMessage(err.Error(), req.Event.Channel, thread)
+								http.Error(w, err.Error(), http.StatusInternalServerError)
 								return
 							}
 							reportOptions.newestMinor = i
@@ -159,9 +164,19 @@ Current settings:
 
 				}
 
-				msg, err = generateReport(reportOptions.releaseAPIUrl, reportOptions.acceptedStalenessLimit, reportOptions.builtStalenessLimit, reportOptions.upgradeStalenessLimit, reportOptions.oldestMinor, reportOptions.newestMinor, reportOptions.includeHealthy)
+				rep, err := generateReport(reportOptions.releaseAPIUrl, reportOptions.acceptedStalenessLimit, reportOptions.builtStalenessLimit, reportOptions.upgradeStalenessLimit, reportOptions.oldestMinor, reportOptions.newestMinor)
 				if err != nil {
-					msg = fmt.Sprintf("Sorry, an error occurred generating the report: %v", err)
+					subject = fmt.Sprintf("Sorry, an error occurred generating the report: %v", err)
+				} else {
+					numHealthy := 0
+					for _, stream := range rep.streams {
+						if len(stream.unhealthyMessages) > 0 {
+							continue
+						}
+						numHealthy += 1
+					}
+					subject = fmt.Sprintf("Latest payload stream health report thread (%d of %d streams healthy)", numHealthy, len(rep.streams))
+					msg = rep.String(reportOptions.includeHealthy)
 				}
 				if tagPatchManager {
 					if reportOptions.includeHealthy {
@@ -172,18 +187,21 @@ Current settings:
 				}
 
 			default:
-				msg = fmt.Sprintf("Sorry, I couldn't process that request: %s", req.Event.Text)
+				subject = fmt.Sprintf("Sorry, I couldn't process that request: %s", req.Event.Text)
 			}
 
-			ts, err := sendMessage("Latest payload stream health report thread", req.Event.Channel, "")
-			if err != nil {
-				return
-			}
-			_, err = sendMessage(msg, req.Event.Channel, ts)
+			ts, err := sendMessage(subject, req.Event.Channel, thread)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
-			} else {
-				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if msg != "" {
+				_, err = sendMessage(msg, req.Event.Channel, ts)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				} else {
+					w.WriteHeader(http.StatusOK)
+				}
 			}
 		}
 	}

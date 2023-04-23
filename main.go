@@ -125,11 +125,11 @@ func addSharedFlags(flagset *pflag.FlagSet, o *options) {
 }
 
 func (o *options) runReport() error {
-	report, err := generateReport(o.releaseAPIUrl, o.acceptedStalenessLimit, o.builtStalenessLimit, o.upgradeStalenessLimit, o.oldestMinor, o.newestMinor, o.includeHealthy)
+	report, err := generateReport(o.releaseAPIUrl, o.acceptedStalenessLimit, o.builtStalenessLimit, o.upgradeStalenessLimit, o.oldestMinor, o.newestMinor)
 	if err != nil {
 		return err
 	}
-	fmt.Println(report)
+	fmt.Println(report.String(o.includeHealthy))
 	return nil
 }
 

@@ -13,29 +13,35 @@ import (
 )
 
 type releaseReport struct {
-	messages  []string
-	unhealthy bool
+	healthyMessages   []string
+	unhealthyMessages []string
 }
 
-func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStalenessLimit, upgradeStalenessLimit time.Duration, oldestMinor, newestMinor int, includeHealthy bool) (string, error) {
+type report struct {
+	streams     map[string]*releaseReport
+	oldestMinor int
+	newestMinor int
+}
+
+func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStalenessLimit, upgradeStalenessLimit time.Duration, oldestMinor, newestMinor int) (*report, error) {
 	acceptedReleases, err := getReleaseStream(releaseAPIUrl + acceptedReleasePath)
 	if err != nil {
-		return "", err
+		return nil, err
 
 	}
 	allReleases, err := getReleaseStream(releaseAPIUrl + allReleasePath)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// stable graph only includes successful edges.  nightly+prerelease include edges for any upgrade attempt that was
 	// made, regardless of whether the job passed.
 	stableGraph, err := getUpgradeGraph("https://amd64.ocp.releases.ci.openshift.org", "stable")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	report := checkUpgrades(stableGraph, allReleases, upgradeStalenessLimit, oldestMinor, newestMinor, includeHealthy)
+	report := checkUpgrades(stableGraph, allReleases, upgradeStalenessLimit, oldestMinor, newestMinor)
 
 	klog.V(4).Info("Checking streams for accepted payloads\n")
 	acceptedEmpty, acceptedStale := getEmptyAndStaleStreams(acceptedReleases, acceptedStalenessLimit, oldestMinor, newestMinor)
@@ -48,34 +54,33 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 		// (and especially if the overall payloads are not stale), flag it.  If the overall stream is empty,
 		// we'll flag it further below.
 		if _, ok := allStale[stream]; !ok {
-			report[stream].messages = append(report[stream].messages, "Has no accepted payloads, but the stream contains recently built payloads")
-			report[stream].unhealthy = true
+			report.streams[stream].unhealthyMessages = append(report.streams[stream].unhealthyMessages, "Has no accepted payloads, but the stream contains recently built payloads")
 		} else if _, ok := allEmpty[stream]; !ok {
-			report[stream].messages = append(report[stream].messages, "Has no accepted payloads, but the stream contains built payloads")
-			report[stream].unhealthy = true
+			report.streams[stream].unhealthyMessages = append(report.streams[stream].unhealthyMessages, "Has no accepted payloads, but the stream contains built payloads")
 		}
 
 	}
 	for stream, age := range acceptedStale {
-		report[stream].messages = append(report[stream].messages, fmt.Sprintf("Most recently accepted payload > %.1f days, last accepted was %.1f days ago", acceptedStalenessLimit.Hours()/24, age.Hours()/24))
-		report[stream].unhealthy = true
+		report.streams[stream].unhealthyMessages = append(report.streams[stream].unhealthyMessages, fmt.Sprintf("Most recently accepted payload > %.1f days, last accepted was %.1f days ago", acceptedStalenessLimit.Hours()/24, age.Hours()/24))
 	}
 
 	for stream, _ := range allEmpty {
-		report[stream].messages = append(report[stream].messages, "Has no built payloads")
-		report[stream].unhealthy = true
+		report.streams[stream].unhealthyMessages = append(report.streams[stream].unhealthyMessages, "Has no built payloads")
 	}
 
 	klog.V(4).Infof("Checking streams for very stale payloads\n")
 	_, allVeryStale := getEmptyAndStaleStreams(allReleases, builtStalenessLimit, oldestMinor, newestMinor)
 
 	for stream, age := range allVeryStale {
-		report[stream].messages = append(report[stream].messages, fmt.Sprintf("Most recently built payload was %.1f days ago", age.Hours()/24))
-		report[stream].unhealthy = true
+		report.streams[stream].unhealthyMessages = append(report.streams[stream].unhealthyMessages, fmt.Sprintf("Most recently built payload was %.1f days ago", age.Hours()/24))
 	}
 
+	return report, nil
+}
+
+func (rep *report) String(includeHealthy bool) string {
 	streams := []string{}
-	for stream, _ := range report {
+	for stream, _ := range rep.streams {
 		streams = append(streams, stream)
 	}
 
@@ -94,23 +99,33 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 	output := ""
 
 	for _, stream := range streams {
-		if !(report[stream].unhealthy || includeHealthy) {
-			continue
+		if len(rep.streams[stream].unhealthyMessages) == 0 && !includeHealthy {
+			continue // nothing to say about this healthy stream
 		}
+
 		output += fmt.Sprintf(releaseStreamUrl+"\n", stream)
-		if report[stream].unhealthy && includeHealthy {
-			output += "  * *WARNING:* Release stream is unhealthy\n"
+
+		unhealthyPrefix := ""
+		if includeHealthy {
+			unhealthyPrefix = "*WARNING:* "
 		}
-		for _, o := range report[stream].messages {
-			output += fmt.Sprintf("  * %s\n", o)
+		for _, o := range rep.streams[stream].unhealthyMessages {
+			output += fmt.Sprintf("  * %s%s\n", unhealthyPrefix, o)
 		}
+
+		if includeHealthy {
+			for _, o := range rep.streams[stream].healthyMessages {
+				output += fmt.Sprintf("  * %s\n", o)
+			}
+		}
+
 		output += "\n"
 	}
 	if !includeHealthy && len(output) == 0 {
 		output += "No unhealthy payload streams detected\n"
 	}
-	output += fmt.Sprintf("\nIgnored releases older than 4.%d.z and newer than 4.%d.z\n", oldestMinor, newestMinor)
-	return output, nil
+	output += fmt.Sprintf("\nIgnored releases older than 4.%d.z and newer than 4.%d.z\n", rep.oldestMinor, rep.newestMinor)
+	return output
 }
 
 func getReleaseStream(url string) (map[string][]string, error) {
@@ -258,8 +273,13 @@ func (f *found) Days() float64 {
 	return f.Age.Hours() / 24
 }
 
-func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThreshold time.Duration, oldestMinor, newestMinor int, includeHealthy bool) map[string]*releaseReport {
-	report := make(map[string]*releaseReport)
+func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThreshold time.Duration, oldestMinor, newestMinor int) *report {
+	rep := &report{
+		streams:     make(map[string]*releaseReport, len(releases)),
+		oldestMinor: oldestMinor,
+		newestMinor: newestMinor,
+	}
+
 	now := time.Now()
 	for release, payloads := range releases {
 
@@ -281,7 +301,7 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 
 		var foundMinor *found
 		var foundPatch *found
-		report[release] = &releaseReport{}
+		rep.streams[release] = &releaseReport{}
 		for _, payload := range payloads {
 			ts, err := getPayloadTimestamp(payload)
 			if err != nil {
@@ -330,17 +350,15 @@ func checkUpgrades(graph GraphMap, releases map[string][]string, stalenessThresh
 		}
 
 		if foundPatch == nil {
-			report[release].messages = append(report[release].messages, "Does not have a recent valid patch level upgrade")
-			report[release].unhealthy = true
-		} else if includeHealthy {
-			report[release].messages = append(report[release].messages, fmt.Sprintf("Has a recent valid patch level upgrade from %s %0.1f days ago", foundPatch.Version, foundPatch.Days()))
+			rep.streams[release].unhealthyMessages = append(rep.streams[release].unhealthyMessages, "Does not have a recent valid patch level upgrade")
+		} else {
+			rep.streams[release].healthyMessages = append(rep.streams[release].healthyMessages, fmt.Sprintf("Has a recent valid patch level upgrade from %s %0.1f days ago", foundPatch.Version, foundPatch.Days()))
 		}
 		if foundMinor == nil {
-			report[release].messages = append(report[release].messages, "Does not have a recent valid minor level upgrade")
-			report[release].unhealthy = true
-		} else if includeHealthy {
-			report[release].messages = append(report[release].messages, fmt.Sprintf("Has a recent valid minor level upgrade from %s %0.1f days ago", foundMinor.Version, foundMinor.Days()))
+			rep.streams[release].unhealthyMessages = append(rep.streams[release].unhealthyMessages, "Does not have a recent valid minor level upgrade")
+		} else {
+			rep.streams[release].healthyMessages = append(rep.streams[release].healthyMessages, fmt.Sprintf("Has a recent valid minor level upgrade from %s %0.1f days ago", foundMinor.Version, foundMinor.Days()))
 		}
 	}
-	return report
+	return rep
 }
