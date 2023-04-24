@@ -168,14 +168,14 @@ Current settings:
 				if err != nil {
 					subject = fmt.Sprintf("Sorry, an error occurred generating the report: %v", err)
 				} else {
-					numHealthy := 0
+					numUnhealthy := 0
 					for _, stream := range rep.streams {
 						if len(stream.unhealthyMessages) > 0 {
-							continue
+							numUnhealthy += 1
 						}
-						numHealthy += 1
+
 					}
-					subject = fmt.Sprintf("Latest payload stream health report thread (%d of %d streams healthy)", numHealthy, len(rep.streams))
+					subject = fmt.Sprintf("Latest payload stream health report thread (%d of %d streams unhealthy)", numUnhealthy, len(rep.streams))
 					msg = rep.String(reportOptions.includeHealthy)
 				}
 				if tagPatchManager {
