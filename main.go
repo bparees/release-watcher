@@ -12,10 +12,8 @@ import (
 )
 
 const (
-	baseReleaseAPIUrl   = "https://amd64.ocp.releases.ci.openshift.org"
 	acceptedReleasePath = "/api/v1/releasestreams/accepted"
 	allReleasePath      = "/api/v1/releasestreams/all"
-	releaseStreamUrl    = "https://amd64.ocp.releases.ci.openshift.org/#%s"
 )
 
 var (
@@ -26,6 +24,14 @@ var (
 	extractMinorRegex = regexp.MustCompile(`4\.([1-9][0-9]*)\.[0-9]+`)
 	// YYYY-MM-DD-HHMMSS
 	extractDateRegex = regexp.MustCompile(`([0-9]{4})-([0-9]{2})-([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})$`)
+
+	releaseAPIUrls = map[string]string{
+		"amd64":   "https://amd64.ocp.releases.ci.openshift.org",
+		"arm64":   "https://arm64.ocp.releases.ci.openshift.org",
+		"multi":   "https://multi.ocp.releases.ci.openshift.org",
+		"ppc64le": "https://ppc64le.ocp.releases.ci.openshift.org",
+		"s390x":   "https://s390x.ocp.releases.ci.openshift.org",
+	}
 )
 
 // TODO
@@ -46,7 +52,6 @@ var (
 //   no build newer than a week exists in the stream - either there have been no changes in the code(ok) or our build system is broken (not ok).  - ????
 
 type options struct {
-	releaseAPIUrl          string
 	oldestMinor            int
 	newestMinor            int
 	slackAlias             string
@@ -54,6 +59,7 @@ type options struct {
 	builtStalenessLimit    time.Duration
 	upgradeStalenessLimit  time.Duration
 	includeHealthy         bool
+	arch                   string
 }
 
 func main() {
@@ -75,9 +81,7 @@ func main() {
 }
 
 func newReportCommand() *cobra.Command {
-	o := &options{
-		releaseAPIUrl: baseReleaseAPIUrl,
-	}
+	o := &options{}
 	cmd := &cobra.Command{
 		Use:   "report",
 		Short: "Run a payload report and print the result to the command line",
@@ -97,9 +101,7 @@ func newReportCommand() *cobra.Command {
 }
 
 func newBotCommand() *cobra.Command {
-	o := &options{
-		releaseAPIUrl: baseReleaseAPIUrl,
-	}
+	o := &options{}
 	cmd := &cobra.Command{
 		Use:   "bot",
 		Short: "Run the payload report bot server",
@@ -121,17 +123,17 @@ func newBotCommand() *cobra.Command {
 }
 
 func addSharedFlags(flagset *pflag.FlagSet, o *options) {
-	flagset.StringVar(&o.releaseAPIUrl, "release-api-url", o.releaseAPIUrl, "The url of the release reporting api")
 	flagset.IntVar(&o.oldestMinor, "oldest-minor", -1, "The oldest minor release to analyze.  Release streams older than this will be ignored.  Specify only the minor value (e.g. \"9\")")
 	flagset.IntVar(&o.newestMinor, "newest-minor", -1, "The newest minor release to analyze.  Release streams newer than this will be ignored.  Specify only the minor value (e.g. \"12\")")
 	flagset.DurationVar(&o.acceptedStalenessLimit, "accepted-staleness-limit", 24*time.Hour, "How old an accepted payload can be before it is considered stale")
 	flagset.DurationVar(&o.builtStalenessLimit, "built-staleness-limit", 72*time.Hour, "How old an built payload can be before it is considered stale")
 	flagset.DurationVar(&o.upgradeStalenessLimit, "upgrade-staleness-limit", 72*time.Hour, "How old a successful upgrade attempt can be before it's considered stale")
 	flagset.BoolVar(&o.includeHealthy, "include-healthy", false, "Report about healthy payloads, not just failures")
+	flagset.StringVar(&o.arch, "arch", "amd64", "Which architecture to report on (amd64, arm64)")
 }
 
 func (o *options) runReport() error {
-	report, err := generateReport(o.releaseAPIUrl, o.acceptedStalenessLimit, o.builtStalenessLimit, o.upgradeStalenessLimit, o.oldestMinor, o.newestMinor)
+	report, err := generateReport(o.acceptedStalenessLimit, o.builtStalenessLimit, o.upgradeStalenessLimit, o.oldestMinor, o.newestMinor, o.arch)
 	if err != nil {
 		return err
 	}
