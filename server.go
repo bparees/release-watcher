@@ -112,18 +112,20 @@ func (o *options) createHandler() http.HandlerFunc {
 			thread := req.Event.TS
 			switch {
 			case strings.Contains(req.Event.Text, "help"):
-				subject = fmt.Sprintf(`help - help
-report - Generates human reports about which release streams do not have recently built or recently accepted payloads, based on the release info found at https://amd64.ocp.releases.ci.openshift.org/
+				subject = fmt.Sprintf(`*help* - this help text
+*report* - Generates human reports about which release streams do not have recently built or recently accepted payloads, based on the release info found at https://amd64.ocp.releases.ci.openshift.org/ or the equivalent page for the architecture specified in the request.
 Arguments:
-  min=X - only look at z-streams with a minimum version of X, e.g. min=9
-  max=X - only look at z-streams with a maximum version of X, e.g. max=12
-  arch=X - look at architecture X, where X is one of [amd64, multi, arm64, ppc64le, s390x], defaults to amd64
-  healthy - include healthy z-streams in the report
-  tag - tag patch manager with the report output
-Current settings:
-  Accepted payloads must be newer than %0.1f hours
-  Payloads must have been built within the last %0.1f hours
-  Ignoring releases older than 4.%d and newer than 4.%d`, o.acceptedStalenessLimit.Hours(), o.builtStalenessLimit.Hours(), o.oldestMinor, o.newestMinor)
+  *min=X* - only look at z-streams with a minimum version of X, e.g. *min=9*
+  *max=X* - only look at z-streams with a maximum version of X, e.g. *max=12*
+  *arch=X* - look at architecture X, where X is one of [*amd64*, *multi*, *arm64*, *ppc64le*, *s390x*]
+  *healthy* - include healthy z-streams in the report
+  *tag* - tag patch manager with the report output
+Current settings/defaults:
+  Accepted payloads must be newer than *%0.1f* hours
+  Payloads must have been built within the last *%0.1f* hours
+  Default: Included releases are >=*4.%d* and <=*4.%d*
+  Default: Architecture is *%s*
+  Default: Fully healthy z-streams are not included in the report`, o.acceptedStalenessLimit.Hours(), o.builtStalenessLimit.Hours(), o.oldestMinor, o.newestMinor, o.arch)
 			case strings.Contains(req.Event.Text, "report"):
 				reportOptions := *o
 				reportOptions.includeHealthy = false
@@ -178,7 +180,7 @@ Current settings:
 						}
 
 					}
-					subject = fmt.Sprintf("Latest payload stream health report thread (%d of %d streams unhealthy)", numUnhealthy, len(rep.streams))
+					subject = fmt.Sprintf("Latest payload stream health report thread for `%s`, `v4.%d` to `v4.%d` (%d of %d streams unhealthy)", reportOptions.arch, reportOptions.oldestMinor, reportOptions.newestMinor, numUnhealthy, len(rep.streams))
 					msg = rep.String(reportOptions.includeHealthy)
 				}
 				if tagPatchManager {
