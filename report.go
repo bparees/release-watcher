@@ -18,16 +18,21 @@ type releaseReport struct {
 }
 
 type report struct {
-	streams     map[string]*releaseReport
-	oldestMinor int
-	newestMinor int
+	streams       map[string]*releaseReport
+	oldestMinor   int
+	newestMinor   int
+	releaseAPIUrl string
 }
 
-func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStalenessLimit, upgradeStalenessLimit time.Duration, oldestMinor, newestMinor int) (*report, error) {
+func generateReport(acceptedStalenessLimit, builtStalenessLimit, upgradeStalenessLimit time.Duration, oldestMinor, newestMinor int, arch string) (*report, error) {
+
+	releaseAPIUrl, found := releaseAPIUrls[arch]
+	if !found {
+		return nil, fmt.Errorf("unknown architecture: %s", arch)
+	}
 	acceptedReleases, err := getReleaseStream(releaseAPIUrl + acceptedReleasePath)
 	if err != nil {
 		return nil, err
-
 	}
 	allReleases, err := getReleaseStream(releaseAPIUrl + allReleasePath)
 	if err != nil {
@@ -36,17 +41,18 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 
 	// stable graph only includes successful edges.  nightly+prerelease include edges for any upgrade attempt that was
 	// made, regardless of whether the job passed.
-	stableGraph, err := getUpgradeGraph("https://amd64.ocp.releases.ci.openshift.org", "stable")
+	stableGraph, err := getUpgradeGraph(releaseAPIUrl, "stable")
 	if err != nil {
 		return nil, err
 	}
 
 	report := checkUpgrades(stableGraph, allReleases, upgradeStalenessLimit, oldestMinor, newestMinor)
+	report.releaseAPIUrl = releaseAPIUrl
 
 	klog.V(4).Info("Checking streams for accepted payloads\n")
-	acceptedEmpty, acceptedStale := getEmptyAndStaleStreams(acceptedReleases, acceptedStalenessLimit, oldestMinor, newestMinor)
+	acceptedEmpty, acceptedStale := getEmptyAndStaleStreams(acceptedReleases, acceptedStalenessLimit, oldestMinor, newestMinor, releaseAPIUrl)
 	klog.V(4).Info("Checking streams for all payloads\n")
-	allEmpty, allStale := getEmptyAndStaleStreams(allReleases, acceptedStalenessLimit, oldestMinor, newestMinor)
+	allEmpty, allStale := getEmptyAndStaleStreams(allReleases, acceptedStalenessLimit, oldestMinor, newestMinor, releaseAPIUrl)
 
 	for stream, _ := range acceptedEmpty {
 		klog.V(4).Infof("Examining stream %s which has no accepted payloads", stream)
@@ -69,7 +75,7 @@ func generateReport(releaseAPIUrl string, acceptedStalenessLimit, builtStaleness
 	}
 
 	klog.V(4).Infof("Checking streams for very stale payloads\n")
-	_, allVeryStale := getEmptyAndStaleStreams(allReleases, builtStalenessLimit, oldestMinor, newestMinor)
+	_, allVeryStale := getEmptyAndStaleStreams(allReleases, builtStalenessLimit, oldestMinor, newestMinor, releaseAPIUrl)
 
 	for stream, age := range allVeryStale {
 		report.streams[stream].unhealthyMessages = append(report.streams[stream].unhealthyMessages, fmt.Sprintf("Most recently built payload was %.1f days ago", age.Hours()/24))
@@ -103,7 +109,7 @@ func (rep *report) String(includeHealthy bool) string {
 			continue // nothing to say about this healthy stream
 		}
 
-		output += fmt.Sprintf(releaseStreamUrl+"\n", stream)
+		output += fmt.Sprintf(rep.releaseAPIUrl + "/#" + stream + "\n")
 
 		unhealthyPrefix := ""
 		if includeHealthy {
@@ -147,7 +153,7 @@ func getReleaseStream(url string) (map[string][]string, error) {
 	return releases, nil
 }
 
-func getEmptyAndStaleStreams(releases map[string][]string, threshold time.Duration, oldestMinor, newestMinor int) (map[string]struct{}, map[string]time.Duration) {
+func getEmptyAndStaleStreams(releases map[string][]string, threshold time.Duration, oldestMinor, newestMinor int, releaseAPIUrl string) (map[string]struct{}, map[string]time.Duration) {
 	emptyStreams := make(map[string]struct{})
 	staleStreams := make(map[string]time.Duration)
 	releaseKeys := reflect.ValueOf(releases).MapKeys()
@@ -194,7 +200,7 @@ func getEmptyAndStaleStreams(releases map[string][]string, threshold time.Durati
 			}
 		}
 		if !freshPayload {
-			klog.V(4).Infof("Release stream %s does not have a recent payload: "+releaseStreamUrl+"\n", stream, stream)
+			klog.V(4).Infof("Release stream %s does not have a recent payload: "+releaseAPIUrl+"/#"+stream+"\n", stream)
 			staleStreams[stream] = now.Sub(newest)
 		}
 	}

@@ -117,6 +117,7 @@ report - Generates human reports about which release streams do not have recentl
 Arguments:
   min=X - only look at z-streams with a minimum version of X, e.g. min=9
   max=X - only look at z-streams with a maximum version of X, e.g. max=12
+  arch=X - look at architecture X, where X is one of [amd64, multi, arm64, ppc64le, s390x], defaults to amd64
   healthy - include healthy z-streams in the report
   tag - tag patch manager with the report output
 Current settings:
@@ -159,12 +160,14 @@ Current settings:
 								return
 							}
 							reportOptions.newestMinor = i
+						case "arch":
+							reportOptions.arch = v[1]
 						}
 					}
 
 				}
 
-				rep, err := generateReport(reportOptions.releaseAPIUrl, reportOptions.acceptedStalenessLimit, reportOptions.builtStalenessLimit, reportOptions.upgradeStalenessLimit, reportOptions.oldestMinor, reportOptions.newestMinor)
+				rep, err := generateReport(reportOptions.acceptedStalenessLimit, reportOptions.builtStalenessLimit, reportOptions.upgradeStalenessLimit, reportOptions.oldestMinor, reportOptions.newestMinor, reportOptions.arch)
 				if err != nil {
 					subject = fmt.Sprintf("Sorry, an error occurred generating the report: %v", err)
 				} else {
