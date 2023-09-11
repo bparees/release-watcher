@@ -139,6 +139,8 @@ func getReleaseStream(url string) (map[string][]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error fetching releases from %s: %s", url, err)
 	}
+	defer res.Body.Close()
+
 	if res.StatusCode != 200 {
 		return nil, fmt.Errorf("non-OK http response code from %s: %d", url, res.StatusCode)
 	}
@@ -247,6 +249,8 @@ func getUpgradeGraph(apiurl, channel string) (GraphMap, error) {
 	if err != nil {
 		return graphMap, fmt.Errorf("error fetching upgrade graph from %s: %s", url, err)
 	}
+	defer res.Body.Close()
+
 	if res.StatusCode != 200 {
 		return graphMap, fmt.Errorf("non-OK http response code fetching upgrade graph from %s: %d", url, res.StatusCode)
 	}
