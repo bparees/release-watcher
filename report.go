@@ -25,6 +25,21 @@ type report struct {
 }
 
 func generateReport(acceptedStalenessLimit, builtStalenessLimit, upgradeStalenessLimit time.Duration, oldestMinor, newestMinor int, arch string) (*report, error) {
+	if oldestMinor == -1 || newestMinor == -1 {
+		oldestSupportedMinor, newestSupportedMinor, err := getSupportedReleases("https://access.redhat.com/product-life-cycles/api/v1/products?name=Openshift%20Container%20Platform%204")
+		if err != nil {
+			return nil, err
+		}
+		if oldestMinor == -1 {
+			oldestMinor = oldestSupportedMinor
+		}
+		if newestMinor == -1 {
+			newestMinor = newestSupportedMinor
+		}
+		if oldestMinor < 0 || newestMinor < 0 || newestMinor < oldestMinor {
+			return nil, fmt.Errorf("invalid release range (%d -> %d), release versions must be non-negative and newest must be greater than oldest", oldestMinor, newestMinor)
+		}
+	}
 
 	releaseAPIUrl, found := releaseAPIUrls[arch]
 	if !found {

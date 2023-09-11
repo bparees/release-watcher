@@ -89,9 +89,6 @@ func newReportCommand() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if o.oldestMinor < 0 || o.newestMinor < 0 || (o.newestMinor < o.oldestMinor) {
-				return fmt.Errorf("invalid release range (%d -> %d), release versions must be non-negative and newest must be greater than oldest", o.oldestMinor, o.newestMinor)
-			}
 			return o.runReport()
 		},
 	}
@@ -109,9 +106,6 @@ func newBotCommand() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if o.oldestMinor < 0 || o.newestMinor < 0 || (o.newestMinor < o.oldestMinor) {
-				return fmt.Errorf("invalid release range (%d -> %d), release versions must be non-negative and newest must be greater than oldest", o.oldestMinor, o.newestMinor)
-			}
 			return o.runBot()
 		},
 	}
@@ -123,8 +117,8 @@ func newBotCommand() *cobra.Command {
 }
 
 func addSharedFlags(flagset *pflag.FlagSet, o *options) {
-	flagset.IntVar(&o.oldestMinor, "oldest-minor", -1, "The oldest minor release to analyze.  Release streams older than this will be ignored.  Specify only the minor value (e.g. \"9\")")
-	flagset.IntVar(&o.newestMinor, "newest-minor", -1, "The newest minor release to analyze.  Release streams newer than this will be ignored.  Specify only the minor value (e.g. \"12\")")
+	flagset.IntVar(&o.oldestMinor, "oldest-minor", -1, "The oldest minor release to analyze.  Release streams older than this will be ignored.  Specify only the minor value (e.g. \"9\") (default to looking up the newest supported release)")
+	flagset.IntVar(&o.newestMinor, "newest-minor", -1, "The newest minor release to analyze.  Release streams newer than this will be ignored.  Specify only the minor value (e.g. \"12\") (default to looking up the newest supported release)")
 	flagset.DurationVar(&o.acceptedStalenessLimit, "accepted-staleness-limit", 24*time.Hour, "How old an accepted payload can be before it is considered stale")
 	flagset.DurationVar(&o.builtStalenessLimit, "built-staleness-limit", 72*time.Hour, "How old an built payload can be before it is considered stale")
 	flagset.DurationVar(&o.upgradeStalenessLimit, "upgrade-staleness-limit", 72*time.Hour, "How old a successful upgrade attempt can be before it's considered stale")
