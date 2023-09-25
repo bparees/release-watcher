@@ -14,11 +14,13 @@ spec:
       labels:
         component: release-watcher
     spec:
-      containers:      
+      containers:
       - image: quay.io/bparees/release-watcher:latest
         name: release-watcher
         command:
         - /release-watcher
+        args:
+        - bot
 ---
 apiVersion: v1
 kind: Service
