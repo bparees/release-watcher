@@ -180,7 +180,7 @@ Current settings/defaults:
 						}
 
 					}
-					subject = fmt.Sprintf("Latest payload stream health report thread for `%s`, `v4.%d` to `v4.%d` (%d of %d streams unhealthy)", reportOptions.arch, reportOptions.oldestMinor, reportOptions.newestMinor, numUnhealthy, len(rep.streams))
+					subject = fmt.Sprintf("Latest payload stream health report thread for `%s`, `v4.%d` to `v4.%d` (%d of %d streams unhealthy)", reportOptions.arch, rep.oldestMinor, rep.newestMinor, numUnhealthy, len(rep.streams))
 					msg = rep.String(reportOptions.includeHealthy)
 				}
 				if tagPatchManager {
