@@ -237,6 +237,7 @@ func sendMessage(msg, channel, thread string) (string, error) {
 		fmt.Printf("error posting chat message: %v", err)
 		return "", err
 	}
+	defer resp.Body.Close()
 	// fmt.Printf("chat message response: %#v\n", resp)
 
 	body, err := ioutil.ReadAll(resp.Body)
@@ -249,6 +250,5 @@ func sendMessage(msg, channel, thread string) (string, error) {
 		fmt.Printf("error reading message response body: %v\n", err)
 		return "", err
 	}
-	resp.Body.Close()
 	return msgResp.TS, nil
 }

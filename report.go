@@ -25,6 +25,21 @@ type report struct {
 }
 
 func generateReport(acceptedStalenessLimit, builtStalenessLimit, upgradeStalenessLimit time.Duration, oldestMinor, newestMinor int, arch string) (*report, error) {
+	if oldestMinor == -1 || newestMinor == -1 {
+		oldestSupportedMinor, newestSupportedMinor, err := getSupportedReleases("https://access.redhat.com/product-life-cycles/api/v1/products?name=Openshift%20Container%20Platform%204")
+		if err != nil {
+			return nil, err
+		}
+		if oldestMinor == -1 {
+			oldestMinor = oldestSupportedMinor
+		}
+		if newestMinor == -1 {
+			newestMinor = newestSupportedMinor
+		}
+		if oldestMinor < 0 || newestMinor < 0 || newestMinor < oldestMinor {
+			return nil, fmt.Errorf("invalid release range (%d -> %d), release versions must be non-negative and newest must be greater than oldest", oldestMinor, newestMinor)
+		}
+	}
 
 	releaseAPIUrl, found := releaseAPIUrls[arch]
 	if !found {
@@ -139,6 +154,8 @@ func getReleaseStream(url string) (map[string][]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error fetching releases from %s: %s", url, err)
 	}
+	defer res.Body.Close()
+
 	if res.StatusCode != 200 {
 		return nil, fmt.Errorf("non-OK http response code from %s: %d", url, res.StatusCode)
 	}
@@ -247,6 +264,8 @@ func getUpgradeGraph(apiurl, channel string) (GraphMap, error) {
 	if err != nil {
 		return graphMap, fmt.Errorf("error fetching upgrade graph from %s: %s", url, err)
 	}
+	defer res.Body.Close()
+
 	if res.StatusCode != 200 {
 		return graphMap, fmt.Errorf("non-OK http response code fetching upgrade graph from %s: %d", url, res.StatusCode)
 	}
