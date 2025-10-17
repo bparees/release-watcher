@@ -34,7 +34,8 @@ func generateReport(acceptedStalenessLimit, builtStalenessLimit, upgradeStalenes
 			oldestMinor = oldestSupportedMinor
 		}
 		if newestMinor == -1 {
-			newestMinor = newestSupportedMinor
+			// Adding 1 for the N+1 releases when determining newest versions ourselves
+			newestMinor = newestSupportedMinor + 1
 		}
 		if oldestMinor < 0 || newestMinor < 0 || newestMinor < oldestMinor {
 			return nil, fmt.Errorf("invalid release range (%d -> %d), release versions must be non-negative and newest must be greater than oldest", oldestMinor, newestMinor)
