@@ -15,7 +15,14 @@ spec:
         component: release-watcher
     spec:
       containers:
-      - image: quay.io/bparees/release-watcher:latest
+      - env:
+        - name: TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: TOKEN
+              name: bot-token
+              optional: true
+        image: quay.io/bparees/release-watcher:latest
         name: release-watcher
         command:
         - /release-watcher
@@ -52,3 +59,4 @@ spec:
   to:
     kind: Service
     name: release-watcher
+
