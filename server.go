@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
@@ -71,7 +70,7 @@ func (o *options) serve() {
 
 func (o *options) createHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := ioutil.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			fmt.Printf("error: %v\n", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -228,6 +227,10 @@ func sendMessage(msg, channel, thread string) (string, error) {
 
 	fmt.Printf("msg post json: %s\n", postJson)
 	req, err := http.NewRequest("POST", "https://slack.com/api/chat.postMessage", bytes.NewBuffer(postJson))
+	if err != nil {
+		fmt.Printf("error generating request: %v", err)
+		return "", err
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", auth_token))
 
@@ -240,7 +243,7 @@ func sendMessage(msg, channel, thread string) (string, error) {
 	defer resp.Body.Close()
 	// fmt.Printf("chat message response: %#v\n", resp)
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf("error reading message response body: %v\n", err)
 		return "", err
